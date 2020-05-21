@@ -1,3 +1,4 @@
+from collections import namedtuple
 from enum import Enum
 import random
 import sys
@@ -10,11 +11,13 @@ class Outcome(Enum):
     BROKEN = 3
 
 class Simulator:
-    def __init__(self, start_refine, target_refine, item_cost, repair_cost):
+    Result = namedtuple('Result', 'fees oridecons copies cost')
+
+    def __init__(self, start_refine, target_refine, item_cost, copy_cost):
         self.start_refine = start_refine
         self.target_refine = target_refine
         self.item_cost = item_cost
-        self.repair_cost = repair_cost
+        self.copy_cost = copy_cost
         self.oridecon_cost = 25
         self.outcomes = [Outcome.SUCCESS, Outcome.FAILURE, Outcome.BROKEN]
         self.outcome_weights = {
@@ -30,47 +33,48 @@ class Simulator:
             9: [0.4, 0.3, 0.3]
         }
         self.safe_refine_copies = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 1, 5: 2, 6: 3, 7: 4, 8: 6, 9: 10 }
-        self.safe_refine_oridecon = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 5, 5: 10, 6: 15, 7: 25, 8: 50, 9: 85 }
-        self.safe_refine_fee = { 0: 10, 1: 20, 2: 30, 3: 40, 4: 100, 5: 220, 6: 470, 7: 910, 8: 1630, 9: 2740 }
+        self.safe_refine_oridecons = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 5, 5: 10, 6: 15, 7: 25, 8: 50, 9: 85 }
+        self.safe_refine_fees = { 0: 10, 1: 20, 2: 30, 3: 40, 4: 100, 5: 220, 6: 470, 7: 910, 8: 1630, 9: 2740 }
         self.fees = []
         self.oridecons = []
-        self.repairs = []
+        self.copies = []
     
     def _calc_fee(self, refine_level):
         return min((refine_level + 1), 10) * 10
         
-    def safe_refine_cost(self):
-        cost = 0
+    def safe_refine_results(self):
+        fees = 0
+        oridecons = 0
+        copies = 0
+        
         for refine_level in range(self.start_refine, self.target_refine):
-            if refine_level < 4:
-                cost += self.oridecon_cost + self._calc_fee(refine_level)
-            else:
-                cost += (self.safe_refine_copies[refine_level] * self.repair_cost
-                    + self.safe_refine_oridecon[refine_level] * self.oridecon_cost
-                    + self.safe_refine_fee[refine_level])
-        return cost
+            fees += self.safe_refine_fees[refine_level]
+            oridecons += self.safe_refine_oridecons[refine_level]            
+            copies += self.safe_refine_copies[refine_level]
+
+        cost = fees + oridecons * self.oridecon_cost + copies * self.copy_cost
+        return Simulator.Result(fees, oridecons, copies, cost)
         
     def results(self):
         tries = len(self.fees)
-        avg_fee = round(sum(self.fees)/tries)
-        avg_oridecon = sum(self.oridecons)/tries
-        avg_oridecon_cost = round(avg_oridecon * self.oridecon_cost)
-        avg_repair = sum(self.repairs)/tries
-        avg_repair_cost = round(avg_repair * self.repair_cost)        
-        avg_cost = avg_fee + avg_oridecon_cost + avg_repair_cost
-        
-        #return avg_fee, avg_oridecon, avg_oridecon_cost, avg_repair, avg_repair_cost, avg_cost
-        return avg_fee, avg_oridecon, avg_repair, avg_cost
+        avg_fees = round(sum(self.fees)/tries)
+        avg_oridecons = sum(self.oridecons)/tries
+        avg_oridecon_cost = round(avg_oridecons * self.oridecon_cost)
+        avg_copies = sum(self.copies)/tries
+        avg_copies_cost = round(avg_copies * self.copy_cost)        
+        avg_cost = avg_fees + avg_oridecon_cost + avg_copies_cost
+
+        return Simulator.Result(avg_fees, avg_oridecons, avg_copies, avg_cost)
         
     def step(self):
-        fee = 0
-        oridecon = 0
-        repair = 0
+        fees = 0
+        oridecons = 0
+        copies = 0
         refine = self.start_refine
         
         while refine < self.target_refine:
-            fee += self._calc_fee(refine)
-            oridecon += 1 if refine < 10 else 5
+            fees += self._calc_fee(refine)
+            oridecons += 1 if refine < 10 else 5
             outcome = random.choices(population=self.outcomes, weights=self.outcome_weights[refine], k=1)[0]
             #print(outcome.name)
             if outcome == Outcome.SUCCESS:
@@ -79,10 +83,10 @@ class Simulator:
                 refine -= 1
             elif outcome == Outcome.BROKEN:
                 refine -= 1
-                repair += 1
-                fee += 5
+                copies += 1
+                fees += 5
             #print('+{}'.format(refine))
 
-        self.fees.append(fee)
-        self.oridecons.append(oridecon)
-        self.repairs.append(repair)
+        self.fees.append(fees)
+        self.oridecons.append(oridecons)
+        self.copies.append(copies)
